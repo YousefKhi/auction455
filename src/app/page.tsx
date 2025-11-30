@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { v4 as uuidv4 } from "uuid";
 import { Suspense } from "react";
 
 export default function Home() {
@@ -8,7 +7,7 @@ export default function Home() {
     "use server";
     const name = String(formData.get("name") || "").trim();
     if (!name) return;
-    const roomId = uuidv4().slice(0, 6);
+    const roomId = crypto.randomUUID().slice(0, 6);
     redirect(`/room/${roomId}?name=${encodeURIComponent(name)}`);
   }
 

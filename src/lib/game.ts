@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from "uuid";
 import type { Card, GameState, Rank, Suit } from "./types";
 
 export function makeDeck(): Card[] {
@@ -7,7 +6,7 @@ export function makeDeck(): Card[] {
   const deck: Card[] = [];
   for (const s of suits) {
     for (const r of ranks) {
-      deck.push({ suit: s, rank: r, id: uuidv4() });
+      deck.push({ suit: s, rank: r, id: crypto.randomUUID() });
     }
   }
   return deck;
