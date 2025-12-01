@@ -17,6 +17,7 @@ export default function RoomPage() {
 
   const [state, setState] = useState<GameState | null>(null);
   const [chat, setChat] = useState<{ from: string; text: string; ts: number }[]>([]);
+  const [error, setError] = useState<string>("");
   const wsRef = useRef<ReturnType<typeof connect> | null>(null);
   const wsApiRef = useRef<Awaited<ReturnType<typeof connect>> | null>(null);
 
@@ -32,6 +33,10 @@ export default function RoomPage() {
       api.onMessage((msg) => {
         if (msg.type === "state") setState(msg.state);
         if (msg.type === "chat") setChat((c) => [...c, msg]);
+        if (msg.type === "error") {
+          setError(msg.message);
+          setTimeout(() => setError(""), 3000);
+        }
       });
     };
     open();
@@ -58,13 +63,19 @@ export default function RoomPage() {
       <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Room {roomId}</h1>
-          <p className="text-slate-400">You are {name}{isHost ? " (Host)" : ""}</p>
+          <p className="text-slate-400">You are {name}{isHost ? " (Host)" : ""} · Seat {youSeat >= 0 ? youSeat : "?"}</p>
         </div>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={copyInvite}>Copy invite link</button>
           <Link className="btn btn-danger" href="/">Leave</Link>
         </div>
       </header>
+      
+      {error && (
+        <div className="rounded-lg bg-red-900/50 border border-red-700 p-3 text-red-200">
+          {error}
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="card p-4">

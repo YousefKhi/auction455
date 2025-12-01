@@ -1,7 +1,7 @@
 const { WebSocketServer } = require("ws");
 const { v4: uuidv4 } = require("uuid");
 
-const PORT = process.env.WS_PORT ? Number(process.env.WS_PORT) : 3001;
+const PORT = process.env.PORT ? Number(process.env.PORT) : (process.env.WS_PORT ? Number(process.env.WS_PORT) : 8080);
 const HOST = process.env.WS_HOST || "0.0.0.0";
 
 /** Game helpers (CommonJS clone of src/lib/game.ts essentials) */
@@ -243,6 +243,19 @@ wss.on("connection", (ws) => {
       }
       const rid = String(msg.roomId || "").toUpperCase();
       room = ensureRoom(rid);
+      
+      // Check if this client already has a seat in this room (reconnection case)
+      const existingSeat = room.seats.findIndex(s => s === clientId);
+      if (existingSeat !== -1) {
+        player = room.players.get(clientId);
+        if (player) {
+          room.sockets.set(clientId, ws);
+          safeSend(currentState(room, clientId));
+          sendStateToAll(room);
+          return;
+        }
+      }
+      
       const seatIndex = room.seats.findIndex(s => s === null);
       if (seatIndex === -1) return safeSend({ type: "error", message: "Room is full" });
       player = { id: clientId, name: msg.name || "Player", seatIndex };
@@ -274,7 +287,9 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "place_bid" && room.phase === "bidding") {
-      if (player.seatIndex !== room.currentTurn) return;
+      if (player.seatIndex !== room.currentTurn) {
+        return safeSend({ type: "error", message: `Not your turn. Current turn: Seat ${room.currentTurn}` });
+      }
       const value = Number(msg.value || 0);
       if (value < 15 || value > 45 || value % 5 !== 0) {
         return safeSend({ type: "error", message: "Bid must be 15..45 in steps of 5." });
@@ -283,6 +298,7 @@ wss.on("connection", (ws) => {
       if (value <= prev) return safeSend({ type: "error", message: "Bid must beat current highest." });
       room.bids[player.seatIndex] = { seatIndex: player.seatIndex, value, passed: false };
       room.highestBid = { seatIndex: player.seatIndex, value };
+      room.message = `Seat ${player.seatIndex} bid ${value}`;
       // next turn - skip empty seats
       room.currentTurn = nextSeatWithPlayer(room, player.seatIndex);
       // if everyone else passed already, auto finish bidding when it cycles
@@ -296,8 +312,11 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "pass_bid" && room.phase === "bidding") {
-      if (player.seatIndex !== room.currentTurn) return;
+      if (player.seatIndex !== room.currentTurn) {
+        return safeSend({ type: "error", message: `Not your turn. Current turn: Seat ${room.currentTurn}` });
+      }
       room.bids[player.seatIndex] = { seatIndex: player.seatIndex, value: room.bids[player.seatIndex]?.value ?? null, passed: true };
+      room.message = `Seat ${player.seatIndex} passed`;
       // next - skip empty seats
       room.currentTurn = nextSeatWithPlayer(room, player.seatIndex);
       if (allPassed(room.bids) && room.highestBid) {
