@@ -2,12 +2,12 @@
 // Note: Vercel serverless functions are stateless, so this will reset on cold starts
 // For production, consider using a database or Redis
 
-import type { Card, GameState as ClientGameState, Suit } from "@/lib/types";
+import type { Card, GameState as ClientGameState, Suit, Phase } from "@/lib/types";
 import { makeDeck, shuffle, dealHands } from "@/lib/game";
 
 type Room = {
   id: string;
-  phase: string;
+  phase: Phase;
   hostId: string | null;
   players: Map<string, { id: string; name: string; seatIndex: number; lastSeen: number }>;
   seats: (string | null)[];
