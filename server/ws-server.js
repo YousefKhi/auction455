@@ -33,7 +33,7 @@ function dealHands(deck, nPlayers = 4, handSize = 5) {
   return hands;
 }
 function teamOfSeat(seatIndex) { return seatIndex % 2 === 0 ? "A" : "B"; }
-function seatLeftOf(seat) { return (seat + 1) % 4; }
+function seatLeftOf(seat, totalSeats) { return (seat + 1) % totalSeats; }
 function compareCards(a, b, lead, trump) {
   const aTrump = trump && a.suit === trump;
   const bTrump = trump && b.suit === trump;
@@ -131,6 +131,7 @@ function ensureRoom(roomId) {
 }
 
 function nextSeatWithPlayer(room, startSeat) {
+  const activePlayers = room.seats.filter(s => s !== null).length;
   for (let i = 0; i < 4; i++) {
     const seat = (startSeat + i) % 4;
     if (room.seats[seat]) return seat;
@@ -146,14 +147,21 @@ function startBidding(room) {
   room.trick = null;
   room.takenTricks = { teamA: 0, teamB: 0 };
   room.message = "Bidding started";
-  room.currentTurn = nextSeatWithPlayer(room, seatLeftOf(room.dealerSeat));
+  room.currentTurn = nextSeatWithPlayer(room, nextSeatWithPlayer(room, room.dealerSeat));
 }
 
 function startDealing(room) {
   room.deck = shuffle(makeDeck());
   room.hands = new Map();
+  const activePlayers = room.seats.filter(s => s !== null).length;
   const hands = dealHands(room.deck, 4, 5);
-  for (let s = 0; s < 4; s++) room.hands.set(s, hands[s]);
+  for (let s = 0; s < 4; s++) {
+    if (room.seats[s]) {
+      room.hands.set(s, hands[s]);
+    } else {
+      room.hands.set(s, []); // Empty hand for empty seats
+    }
+  }
   startBidding(room);
 }
 
@@ -186,6 +194,7 @@ wss.on("connection", (ws) => {
   const clientId = uuidv4();
   let room = null;
   let player = null;
+  let isListOnlyConnection = false; // Track if this is just for listing rooms
 
   function safeSend(obj) {
     try { ws.send(JSON.stringify(obj)); } catch {}
@@ -197,6 +206,7 @@ wss.on("connection", (ws) => {
     if (!msg || typeof msg !== "object") return;
 
     if (msg.type === "list_rooms") {
+      isListOnlyConnection = true; // Mark as list-only connection
       const roomList = Array.from(rooms.values()).map(r => ({
         id: r.id,
         playerCount: r.seats.filter(s => s !== null).length,
@@ -207,6 +217,10 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "create_room") {
+      // Check if this client already joined a room
+      if (room && player) {
+        return safeSend(currentState(room, clientId));
+      }
       const roomId = (msg.roomId || uuidv4().slice(0,6)).toUpperCase();
       room = ensureRoom(roomId);
       // assign first available seat
@@ -223,6 +237,10 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "join_room") {
+      // Check if this client already joined a room
+      if (room && player) {
+        return safeSend(currentState(room, clientId));
+      }
       const rid = String(msg.roomId || "").toUpperCase();
       room = ensureRoom(rid);
       const seatIndex = room.seats.findIndex(s => s === null);
@@ -242,8 +260,14 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "start_game") {
       // Any player can start the game
-      if (room.seats.some(s => !s)) return safeSend({ type: "error", message: "Need 4 players." });
-      room.message = "Dealing...";
+      const filledSeats = room.seats.filter(s => s !== null).length;
+      // Allow starting with 2+ players for testing, but warn if not 4
+      if (filledSeats < 2) return safeSend({ type: "error", message: "Need at least 2 players." });
+      if (filledSeats < 4) {
+        room.message = `Starting with ${filledSeats} players (normally 4)...`;
+      } else {
+        room.message = "Dealing...";
+      }
       startDealing(room);
       sendStateToAll(room);
       return;
@@ -259,8 +283,8 @@ wss.on("connection", (ws) => {
       if (value <= prev) return safeSend({ type: "error", message: "Bid must beat current highest." });
       room.bids[player.seatIndex] = { seatIndex: player.seatIndex, value, passed: false };
       room.highestBid = { seatIndex: player.seatIndex, value };
-      // next turn
-      room.currentTurn = seatLeftOf(room.currentTurn);
+      // next turn - skip empty seats
+      room.currentTurn = nextSeatWithPlayer(room, player.seatIndex);
       // if everyone else passed already, auto finish bidding when it cycles
       if (allPassed(room.bids)) {
         room.phase = "select_trump";
@@ -274,9 +298,8 @@ wss.on("connection", (ws) => {
     if (msg.type === "pass_bid" && room.phase === "bidding") {
       if (player.seatIndex !== room.currentTurn) return;
       room.bids[player.seatIndex] = { seatIndex: player.seatIndex, value: room.bids[player.seatIndex]?.value ?? null, passed: true };
-      // next
-      const next = seatLeftOf(room.currentTurn);
-      room.currentTurn = next;
+      // next - skip empty seats
+      room.currentTurn = nextSeatWithPlayer(room, player.seatIndex);
       if (allPassed(room.bids) && room.highestBid) {
         room.phase = "select_trump";
         room.currentTurn = room.highestBid.seatIndex;
@@ -291,7 +314,7 @@ wss.on("connection", (ws) => {
       const suit = String(msg.suit);
       if (!suits.includes(suit)) return;
       room.trump = suit;
-      room.currentTurn = seatLeftOf(room.dealerSeat);
+      room.currentTurn = nextSeatWithPlayer(room, room.dealerSeat);
       startTricks(room);
       sendStateToAll(room);
       return;
@@ -311,8 +334,9 @@ wss.on("connection", (ws) => {
       // play
       room.trick.plays.push({ seatIndex: player.seatIndex, card });
       room.hands.set(player.seatIndex, hand.filter(c => c.id !== card.id));
-      if (room.trick.plays.length < 4) {
-        room.currentTurn = seatLeftOf(room.currentTurn);
+      const activePlayers = room.seats.filter(s => s !== null).length;
+      if (room.trick.plays.length < activePlayers) {
+        room.currentTurn = nextSeatWithPlayer(room, player.seatIndex);
         sendStateToAll(room);
         return;
       }
@@ -353,8 +377,8 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "ready_next_round" && room.phase === "round_end") {
-      // rotate dealer
-      room.dealerSeat = seatLeftOf(room.dealerSeat);
+      // rotate dealer to next active player
+      room.dealerSeat = nextSeatWithPlayer(room, room.dealerSeat);
       startDealing(room);
       sendStateToAll(room);
       return;
@@ -367,7 +391,9 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    if (!room || !player) return;
+    // If this was just a list-only connection, don't affect rooms
+    if (isListOnlyConnection || !room || !player) return;
+    
     room.sockets.delete(player.id);
     // keep seat for reconnection during session; cleanup aggressively if all gone
     const someoneConnected = Array.from(room.sockets.values()).length > 0;

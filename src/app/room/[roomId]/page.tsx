@@ -6,6 +6,8 @@ import { connect } from "@/lib/ws-client";
 import type { Card, GameState, Suit } from "@/lib/types";
 import Link from "next/link";
 import { clsx } from "clsx";
+import { getCardImageUrl, getCardBackUrl } from "@/lib/card-images";
+import Image from "next/image";
 
 export default function RoomPage() {
   const params = useParams<{ roomId: string }>();
@@ -48,7 +50,8 @@ export default function RoomPage() {
   };
 
   const myHand = state?.hand ?? [];
-  const canStart = state?.players?.every(p => p.id) ?? false;
+  const filledSeats = state?.players?.filter(p => p.id).length ?? 0;
+  const canStart = filledSeats >= 2; // Allow starting with 2+ players
 
   return (
     <div className="space-y-4">
@@ -180,12 +183,18 @@ function Hand(props: { cards: Card[]; onPlay: (id: string) => void; disabled?: b
         <button
           key={c.id}
           disabled={disabled}
-          className={clsx("rounded-md border bg-slate-800 px-3 py-2 text-left disabled:cursor-not-allowed", `s-${c.suit}`)}
+          className={clsx(
+            "rounded-lg overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100",
+            disabled ? "border-slate-700" : "border-blue-500 hover:border-blue-400"
+          )}
           onClick={() => onPlay(c.id)}
-          title={`${c.rank} of ${c.suit}`}
+          title={`${c.rank} of ${suitName(c.suit)}`}
         >
-          <div className="text-lg font-semibold">{c.rank}</div>
-          <div className="text-xs text-slate-400">{suitName(c.suit)}</div>
+          <img 
+            src={getCardImageUrl(c)} 
+            alt={`${c.rank} of ${suitName(c.suit)}`}
+            className="w-20 h-auto block"
+          />
         </button>
       ))}
     </div>
@@ -200,21 +209,29 @@ function Table(props: { state: GameState; onPlay: (id: string) => void }) {
   const { state } = props;
   const trick = state.trick;
   return (
-    <div className="rounded-md border border-slate-800 p-3">
-      <div className="mb-2 text-sm text-slate-400">Current turn: Seat {state.currentTurn}</div>
-      <div className="grid grid-cols-4 gap-2">
+    <div className="rounded-md border border-slate-800 p-4 bg-gradient-to-br from-green-900/20 to-green-800/20">
+      <div className="mb-3 text-sm text-slate-300 font-semibold">Current turn: Seat {state.currentTurn}</div>
+      <div className="grid grid-cols-4 gap-3">
         {[0,1,2,3].map(seat => {
           const play = trick?.plays.find(p => p.seatIndex === seat);
+          const player = state.players.find(p => p.seatIndex === seat);
           return (
-            <div key={seat} className="rounded-md border border-slate-700 p-3">
-              <div className="text-xs text-slate-400">Seat {seat}</div>
+            <div key={seat} className="flex flex-col items-center gap-2">
+              <div className="text-xs text-slate-400 font-medium">
+                {player?.name || `Seat ${seat}`}
+              </div>
               {play ? (
-                <div className="mt-1">
-                  <div className="text-lg font-semibold">{play.card.rank}</div>
-                  <div className="text-xs text-slate-400">{suitName(play.card.suit)}</div>
+                <div className="rounded-lg overflow-hidden border-2 border-yellow-500 shadow-lg">
+                  <img 
+                    src={getCardImageUrl(play.card)} 
+                    alt={`${play.card.rank} of ${suitName(play.card.suit)}`}
+                    className="w-20 h-auto block"
+                  />
                 </div>
               ) : (
-                <div className="mt-3 text-slate-600">—</div>
+                <div className="w-20 h-28 rounded-lg border-2 border-dashed border-slate-700 flex items-center justify-center text-slate-600">
+                  —
+                </div>
               )}
             </div>
           );
