@@ -7,57 +7,25 @@ export default function Home() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [rooms, setRooms] = useState<Array<{ id: string; playerCount: number; phase: string }>>([]);
-  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
-    // Build WebSocket URL
-    const absoluteUrl = process.env.NEXT_PUBLIC_WS_URL;
-    const pathOnSameOrigin = process.env.NEXT_PUBLIC_WS_PATH;
-    
-    const makeUrl = () => {
-      if (absoluteUrl) return absoluteUrl;
-      if (typeof window !== "undefined") {
-        const isHttps = window.location.protocol === "https:";
-        const protocol = isHttps ? "wss" : "ws";
-        if (pathOnSameOrigin) {
-          const origin = window.location.host;
-          return `${protocol}://${origin}${pathOnSameOrigin}`;
-        }
-        const host = window.location.hostname;
-        const port = window.location.port || (isHttps ? "443" : "3000");
-        const wsPort = Number(port) === 3000 ? 3001 : Number(port) + 1;
-        return `${protocol}://${host}:${wsPort}`;
+    const fetchRooms = async () => {
+      try {
+        const res = await fetch("/api/rooms");
+        const data = await res.json();
+        setRooms(data.rooms || []);
+      } catch (error) {
+        console.error("Failed to fetch rooms:", error);
       }
-      return "ws://localhost:3001";
     };
 
-    const socket = new WebSocket(makeUrl());
-    
-    socket.onopen = () => {
-      socket.send(JSON.stringify({ type: "list_rooms" }));
-    };
-    
-    socket.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === "room_list") {
-          setRooms(msg.rooms || []);
-        }
-      } catch {}
-    };
-    
-    setWs(socket);
+    fetchRooms();
     
     // Refresh room list every 3 seconds
-    const interval = setInterval(() => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "list_rooms" }));
-      }
-    }, 3000);
+    const interval = setInterval(fetchRooms, 3000);
     
     return () => {
       clearInterval(interval);
-      socket.close();
     };
   }, []);
 

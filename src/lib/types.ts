@@ -37,6 +37,7 @@ export interface GameState {
   dealerSeat: number;
   scores: { teamA: number; teamB: number };
   message?: string;
+  chats?: Array<{ from: string; text: string; ts: number }>;
 }
 
 export type ClientToServer =

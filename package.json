@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev -p 3000\" \"node server/ws-server.js\"",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start -p 3000",
-    "start:ws": "node server/ws-server.js",
+    "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
@@ -16,15 +15,12 @@
     "postcss": "^8.4.47",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "uuid": "^9.0.1",
-    "ws": "^8.18.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
-    "concurrently": "^8.2.2",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.6",
     "tailwindcss": "^3.4.14",

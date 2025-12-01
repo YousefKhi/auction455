@@ -2,7 +2,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useParams } from "next/navigation";
-import { connect } from "@/lib/ws-client";
+import { connectApi } from "@/lib/api-client";
 import type { Card, GameState, Suit } from "@/lib/types";
 import Link from "next/link";
 import { clsx } from "clsx";
@@ -18,36 +18,45 @@ export default function RoomPage() {
   const [state, setState] = useState<GameState | null>(null);
   const [chat, setChat] = useState<{ from: string; text: string; ts: number }[]>([]);
   const [error, setError] = useState<string>("");
-  const wsRef = useRef<ReturnType<typeof connect> | null>(null);
-  const wsApiRef = useRef<Awaited<ReturnType<typeof connect>> | null>(null);
+  const apiRef = useRef<ReturnType<typeof connectApi> | null>(null);
 
   const youSeat = state?.you?.seatIndex ?? -1;
   const isHost = state?.you?.id && state.hostId === state.you.id;
 
   useEffect(() => {
     let mounted = true;
-    const open = async () => {
-      const api = await connect(roomId, name);
-      if (!mounted) return;
-      wsApiRef.current = api;
-      api.onMessage((msg) => {
-        if (msg.type === "state") setState(msg.state);
-        if (msg.type === "chat") setChat((c) => [...c, msg]);
-        if (msg.type === "error") {
-          setError(msg.message);
-          setTimeout(() => setError(""), 3000);
-        }
-      });
-    };
-    open();
+    const api = connectApi(roomId, name);
+    if (!mounted) return;
+    
+    apiRef.current = api;
+    
+    api.onStateUpdate((newState) => {
+      if (mounted) {
+        setState(newState);
+      }
+    });
+    
+    api.onChat((msg) => {
+      if (mounted) {
+        setChat((c) => [...c, msg]);
+      }
+    });
+    
+    api.onError((err) => {
+      if (mounted) {
+        setError(err);
+        setTimeout(() => setError(""), 3000);
+      }
+    });
+    
     return () => {
       mounted = false;
-      wsApiRef.current?.close();
+      api.close();
     };
   }, [roomId, name]);
 
-  const send = useCallback((m: any) => {
-    wsApiRef.current?.send(m);
+  const send = useCallback((action: string, data?: any) => {
+    apiRef.current?.send(action, data);
   }, []);
 
   const copyInvite = async () => {
@@ -85,7 +94,7 @@ export default function RoomPage() {
             <button
               className="btn btn-primary flex-1 disabled:cursor-not-allowed"
               disabled={!canStart || state?.phase !== "lobby"}
-              onClick={() => send({ type: "start_game" })}
+              onClick={() => send("start_game")}
             >
               Start game
             </button>
@@ -99,17 +108,17 @@ export default function RoomPage() {
           <h2 className="mb-2 font-semibold">Game</h2>
           <div className="text-slate-300">{state?.message}</div>
           <div className="mt-3">
-            {state?.phase === "bidding" && <Bidding state={state} onBid={(v) => send({ type: "place_bid", value: v })} onPass={() => send({ type: "pass_bid" })} />}
+            {state?.phase === "bidding" && <Bidding state={state} onBid={(v) => send("place_bid", { value: v })} onPass={() => send("pass_bid")} />}
             {state?.phase === "select_trump" && state?.you?.seatIndex === state?.highestBid?.seatIndex && (
-              <TrumpPicker onSelect={(suit) => send({ type: "select_trump", suit })} />
+              <TrumpPicker onSelect={(suit) => send("select_trump", { suit })} />
             )}
             {state?.phase === "playing" && (
-              <Table state={state} onPlay={(cardId) => send({ type: "play_card", cardId })} />
+              <Table state={state} onPlay={(cardId) => send("play_card", { cardId })} />
             )}
             {state?.phase === "round_end" && (
               <div className="space-y-3">
                 <div>Round over.</div>
-                <button className="btn btn-primary" onClick={() => send({ type: "ready_next_round" })}>
+                <button className="btn btn-primary" onClick={() => send("ready_next_round")}>
                   Next round
                 </button>
               </div>
@@ -119,12 +128,12 @@ export default function RoomPage() {
 
         <div className="card p-4 md:col-span-3">
           <h2 className="mb-2 font-semibold">Your hand</h2>
-          <Hand cards={myHand} disabled={state?.phase !== "playing" || state?.currentTurn !== youSeat} onPlay={(id) => send({ type: "play_card", cardId: id })} />
+          <Hand cards={myHand} disabled={state?.phase !== "playing" || state?.currentTurn !== youSeat} onPlay={(id) => send("play_card", { cardId: id })} />
         </div>
 
         <div className="card p-4 md:col-span-3">
           <h2 className="mb-2 font-semibold">Chat</h2>
-          <ChatBox chat={chat} onSend={(t) => send({ type: "chat", text: t })} />
+          <ChatBox chat={chat} onSend={(t) => send("chat", { text: t })} />
         </div>
       </div>
     </div>
