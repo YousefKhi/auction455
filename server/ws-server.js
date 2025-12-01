@@ -196,6 +196,16 @@ wss.on("connection", (ws) => {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (!msg || typeof msg !== "object") return;
 
+    if (msg.type === "list_rooms") {
+      const roomList = Array.from(rooms.values()).map(r => ({
+        id: r.id,
+        playerCount: r.seats.filter(s => s !== null).length,
+        phase: r.phase
+      }));
+      safeSend({ type: "room_list", rooms: roomList });
+      return;
+    }
+
     if (msg.type === "create_room") {
       const roomId = (msg.roomId || uuidv4().slice(0,6)).toUpperCase();
       room = ensureRoom(roomId);
@@ -231,7 +241,7 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "start_game") {
-      if (room.hostId !== clientId) return safeSend({ type: "error", message: "Only host can start." });
+      // Any player can start the game
       if (room.seats.some(s => !s)) return safeSend({ type: "error", message: "Need 4 players." });
       room.message = "Dealing...";
       startDealing(room);

@@ -1,59 +1,113 @@
+"use client";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { Suspense } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 
 export default function Home() {
-  async function createRoom(formData: FormData) {
-    "use server";
-    const name = String(formData.get("name") || "").trim();
-    if (!name) return;
-    const roomId = crypto.randomUUID().slice(0, 6);
-    redirect(`/room/${roomId}?name=${encodeURIComponent(name)}`);
-  }
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [rooms, setRooms] = useState<Array<{ id: string; playerCount: number; phase: string }>>([]);
+  const [ws, setWs] = useState<WebSocket | null>(null);
+
+  useEffect(() => {
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || `ws://localhost:3001`;
+    const socket = new WebSocket(wsUrl);
+    
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ type: "list_rooms" }));
+    };
+    
+    socket.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "room_list") {
+          setRooms(msg.rooms || []);
+        }
+      } catch {}
+    };
+    
+    setWs(socket);
+    
+    // Refresh room list every 3 seconds
+    const interval = setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "list_rooms" }));
+      }
+    }, 3000);
+    
+    return () => {
+      clearInterval(interval);
+      socket.close();
+    };
+  }, []);
+
+  const createRoom = () => {
+    if (!name.trim()) return;
+    const roomId = crypto.randomUUID().slice(0, 6).toUpperCase();
+    router.push(`/room/${roomId}?name=${encodeURIComponent(name)}`);
+  };
+
+  const joinRoom = (roomId: string) => {
+    if (!name.trim()) {
+      alert("Please enter your name first");
+      return;
+    }
+    router.push(`/room/${roomId}?name=${encodeURIComponent(name)}`);
+  };
 
   return (
     <div className="grid gap-8 md:grid-cols-2">
       <div className="card p-6 md:p-8">
         <h1 className="mb-4 text-3xl font-bold">Auction 45</h1>
         <p className="text-slate-300">
-          Create a room and share the link with friends. Up to 4 players,
+          Create a room or join an active game. Up to 4 players,
           real‑time bidding and trick taking. No accounts needed.
         </p>
         <div className="mt-6 h-px bg-slate-800" />
-        <form action={createRoom} className="mt-6 space-y-3">
+        <div className="mt-6 space-y-3">
           <label className="block text-sm text-slate-400">Your name</label>
-          <input name="name" placeholder="e.g. Alex" className="input" />
-          <button className="btn btn-primary w-full">Create Room</button>
-        </form>
+          <input 
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Alex" 
+            className="input"
+            onKeyDown={(e) => e.key === "Enter" && createRoom()}
+          />
+          <button onClick={createRoom} className="btn btn-primary w-full">
+            Create New Room
+          </button>
+        </div>
       </div>
 
       <div className="card p-6 md:p-8">
-        <h2 className="text-xl font-semibold">Join a room</h2>
-        <Suspense>
-          <JoinForm />
-        </Suspense>
+        <h2 className="text-xl font-semibold mb-4">Active Rooms</h2>
+        {rooms.length === 0 ? (
+          <p className="text-slate-400 text-sm">No active rooms. Create one to get started!</p>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {rooms.map((room) => (
+              <div
+                key={room.id}
+                className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors"
+              >
+                <div>
+                  <div className="font-mono font-semibold text-lg">{room.id}</div>
+                  <div className="text-sm text-slate-400">
+                    {room.playerCount}/4 players · {room.phase}
+                  </div>
+                </div>
+                <button
+                  onClick={() => joinRoom(room.id)}
+                  className="btn btn-ghost text-sm px-3 py-1"
+                  disabled={room.playerCount >= 4}
+                >
+                  {room.playerCount >= 4 ? "Full" : "Join"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-function JoinForm() {
-  async function joinRoom(formData: FormData) {
-    "use server";
-    const name = String(formData.get("name") || "").trim();
-    const roomCode = String(formData.get("room") || "").trim();
-    if (!name || !roomCode) return;
-    redirect(`/room/${roomCode}?name=${encodeURIComponent(name)}`);
-  }
-
-  return (
-    <form action={joinRoom} className="mt-4 space-y-3">
-      <label className="block text-sm text-slate-400">Your name</label>
-      <input name="name" placeholder="e.g. Jamie" className="input" />
-      <label className="block text-sm text-slate-400">Room code</label>
-      <input name="room" placeholder="e.g. A1B2C3" className="input" />
-      <button className="btn btn-ghost w-full">Join Room</button>
-    </form>
-  );
-}
-

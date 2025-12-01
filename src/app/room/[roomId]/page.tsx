@@ -48,7 +48,7 @@ export default function RoomPage() {
   };
 
   const myHand = state?.hand ?? [];
-  const canStart = isHost && (state?.players?.every(p => p.id) ?? false);
+  const canStart = state?.players?.every(p => p.id) ?? false;
 
   return (
     <div className="space-y-4">
