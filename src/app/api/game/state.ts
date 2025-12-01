@@ -3,7 +3,7 @@
 // For production, consider using a database or Redis
 
 import type { Card, GameState as ClientGameState, Suit } from "@/lib/types";
-import { createDeck, shuffle, dealHands } from "@/lib/game";
+import { makeDeck, shuffle, dealHands } from "@/lib/game";
 
 type Room = {
   id: string;
@@ -130,7 +130,7 @@ class GameState {
   }
 
   private startDealing(room: Room) {
-    const deck = shuffle(createDeck());
+    const deck = shuffle(makeDeck());
     room.hands = new Map();
     const hands = dealHands(deck, 4, 5);
     for (let s = 0; s < 4; s++) {
