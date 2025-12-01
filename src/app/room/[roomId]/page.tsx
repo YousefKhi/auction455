@@ -210,10 +210,13 @@ function Hand(props: { cards: Card[]; onPlay: (id: string) => void; disabled?: b
           onClick={() => onPlay(c.id)}
           title={`${c.rank} of ${suitName(c.suit)}`}
         >
-          <img 
+          <Image 
             src={getCardImageUrl(c)} 
             alt={`${c.rank} of ${suitName(c.suit)}`}
+            width={80}
+            height={112}
             className="w-20 h-auto block"
+            unoptimized
           />
         </button>
       ))}
@@ -242,10 +245,13 @@ function Table(props: { state: GameState; onPlay: (id: string) => void }) {
               </div>
               {play ? (
                 <div className="rounded-lg overflow-hidden border-2 border-yellow-500 shadow-lg">
-                  <img 
+                  <Image 
                     src={getCardImageUrl(play.card)} 
                     alt={`${play.card.rank} of ${suitName(play.card.suit)}`}
+                    width={80}
+                    height={112}
                     className="w-20 h-auto block"
+                    unoptimized
                   />
                 </div>
               ) : (

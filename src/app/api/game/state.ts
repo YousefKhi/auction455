@@ -2,7 +2,7 @@
 // Note: Vercel serverless functions are stateless, so this will reset on cold starts
 // For production, consider using a database or Redis
 
-import type { Card, GameState, Suit } from "@/lib/types";
+import type { Card, GameState as ClientGameState, Suit } from "@/lib/types";
 import { createDeck, shuffle, dealHands } from "@/lib/game";
 
 type Room = {
@@ -364,7 +364,7 @@ class GameState {
     return { success: true };
   }
 
-  getState(roomId: string, clientId: string): GameState {
+  getState(roomId: string, clientId: string): ClientGameState {
     const room = this.rooms.get(roomId);
     if (!room) {
       return {
